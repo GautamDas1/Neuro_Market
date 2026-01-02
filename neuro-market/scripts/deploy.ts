@@ -1,15 +1,27 @@
 import { ethers } from "hardhat";
 
 async function main() {
-  // 1. Deploy NeuroToken
-  const neuroToken = await ethers.deployContract("NeuroToken");
-  await neuroToken.waitForDeployment();
-  console.log(`NeuroToken deployed to: ${await neuroToken.getAddress()}`);
+  const [deployer] = await ethers.getSigners();
+  console.log("🚀 Deploying contracts with account:", deployer.address);
 
-  // 2. Deploy Marketplace (Pass Token Address to constructor)
-  const marketplace = await ethers.deployContract("NeuroMarketplace", [await neuroToken.getAddress()]);
+  // 1. Deploy Token
+  const NeuroToken = await ethers.getContractFactory("NeuroToken");
+  const neuroToken = await NeuroToken.deploy();
+  await neuroToken.waitForDeployment();
+  const tokenAddr = await neuroToken.getAddress();
+  console.log("✅ NeuroToken deployed to:", tokenAddr);
+
+  // 2. Deploy Marketplace V2 (UPDATED NAME)
+  const NeuroMarketV2 = await ethers.getContractFactory("NeuroMarketV2");
+  const marketplace = await NeuroMarketV2.deploy(tokenAddr);
   await marketplace.waitForDeployment();
-  console.log(`NeuroMarketplace deployed to: ${await marketplace.getAddress()}`);
+  const marketAddr = await marketplace.getAddress();
+  
+  console.log("✅ NeuroMarketV2 deployed to:", marketAddr);
+  console.log("---------------------------------------");
+  console.log("👉 UPDATE YOUR FILES WITH THESE ADDRESSES:");
+  console.log("TOKEN_ADDR =", tokenAddr);
+  console.log("MARKET_ADDR =", marketAddr);
 }
 
 main().catch((error) => {

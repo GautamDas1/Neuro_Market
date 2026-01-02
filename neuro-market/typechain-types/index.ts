@@ -26,5 +26,7 @@ export type { DataToken } from "./contracts/DataToken";
 export { DataToken__factory } from "./factories/contracts/DataToken__factory";
 export type { NeuroMarketplace } from "./contracts/NeuroMarketplace";
 export { NeuroMarketplace__factory } from "./factories/contracts/NeuroMarketplace__factory";
+export type { NeuroMarketV2 } from "./contracts/NeuroMarketV2";
+export { NeuroMarketV2__factory } from "./factories/contracts/NeuroMarketV2__factory";
 export type { NeuroToken } from "./contracts/NeuroToken";
 export { NeuroToken__factory } from "./factories/contracts/NeuroToken__factory";

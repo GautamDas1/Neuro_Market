@@ -1,3 +1,12 @@
 {
-  "QmSeygQMq7tGcrGXer2qtWZgjRrkT3FYDk9hsLDobZdWTT": "x0vQzOrmigb2YuqZy6rBVYLKMfU_KMLK5J0HtLDX-iw="
+    "QmSeygQMq7tGcrGXer2qtWZgjRrkT3FYDk9hsLDobZdWTT": {
+        "key": "b'YOUR_GENERATED_KEY_HERE_=='",
+        "name": "Corn Field Privacy Set (50k Photos)",
+        "mode": "compute_privacy"
+    },
+    "QmMusic111111111111111111111111111111111111111": {
+        "key": "b'PUBLIC_KEY_123'",
+        "name": "Indie Pop Track - Summer Vibes",
+        "mode": "standard_download"
+    }
 }

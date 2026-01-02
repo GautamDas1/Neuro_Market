@@ -5,7 +5,8 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./DataToken.sol";
 
-contract NeuroMarketplace is ReentrancyGuard {
+// NAME CHANGED TO V2
+contract NeuroMarketV2 is ReentrancyGuard {
     IERC20 public neuroToken;
     uint256 public constant STAKE_AMOUNT = 50 * 10**18; 
     
@@ -15,13 +16,16 @@ contract NeuroMarketplace is ReentrancyGuard {
         uint256 price;
         bool isActive;
         uint256 stakedAmount;
+        string ipfsHash; 
     }
 
     mapping(address => DatasetListing) public listings;
     address[] public allDatasets;
 
     event DatasetPublished(address indexed dataToken, address indexed publisher, uint256 price);
-    event AccessPurchased(address indexed buyer, address indexed dataToken, uint256 amount);
+    
+    // THIS IS THE EVENT WE WANT
+    event FilePurchased(address indexed buyer, string dataTokenURI);
 
     constructor(address _neuroTokenAddress) {
         neuroToken = IERC20(_neuroTokenAddress);
@@ -44,7 +48,8 @@ contract NeuroMarketplace is ReentrancyGuard {
             publisher: msg.sender,
             price: _price,
             isActive: true,
-            stakedAmount: STAKE_AMOUNT
+            stakedAmount: STAKE_AMOUNT,
+            ipfsHash: _ipfsHash 
         });
 
         allDatasets.push(address(newDataToken));
@@ -60,7 +65,8 @@ contract NeuroMarketplace is ReentrancyGuard {
 
         require(neuroToken.transferFrom(msg.sender, seller, price), "Payment failed");
         
-        emit AccessPurchased(msg.sender, _dataTokenAddress, price);
+        // EMIT THE CID
+        emit FilePurchased(msg.sender, listing.ipfsHash);
     }
     
     function getAllDatasets() external view returns (address[] memory) {

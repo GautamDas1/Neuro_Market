@@ -23,7 +23,7 @@ import type {
   TypedContractMethod,
 } from "../common";
 
-export interface NeuroMarketplaceInterface extends Interface {
+export interface NeuroMarketV2Interface extends Interface {
   getFunction(
     nameOrSignature:
       | "STAKE_AMOUNT"
@@ -124,11 +124,11 @@ export namespace FilePurchasedEvent {
   export type LogDescription = TypedLogDescription<Event>;
 }
 
-export interface NeuroMarketplace extends BaseContract {
-  connect(runner?: ContractRunner | null): NeuroMarketplace;
+export interface NeuroMarketV2 extends BaseContract {
+  connect(runner?: ContractRunner | null): NeuroMarketV2;
   waitForDeployment(): Promise<this>;
 
-  interface: NeuroMarketplaceInterface;
+  interface: NeuroMarketV2Interface;
 
   queryFilter<TCEvent extends TypedContractEvent>(
     event: TCEvent,

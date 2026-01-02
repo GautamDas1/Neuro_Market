@@ -2,5 +2,6 @@
 /* tslint:disable */
 /* eslint-disable */
 export type { DataToken } from "./DataToken";
+export type { NeuroMarketV2 } from "./NeuroMarketV2";
 export type { NeuroMarketplace } from "./NeuroMarketplace";
 export type { NeuroToken } from "./NeuroToken";

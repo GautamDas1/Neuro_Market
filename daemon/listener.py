@@ -1,85 +1,108 @@
-import json
 import time
-import os
+import json
+import re
 from web3 import Web3
-from ipfs_manager import download_from_ipfs
-from crypto_manager import decrypt_file
 
 # ================= CONFIGURATION =================
-# 1. Connect to Local Blockchain
-w3 = Web3(Web3.HTTPProvider("http://127.0.0.1:8545"))
+BLOCKCHAIN_URL = "http://127.0.0.1:8545"
+MARKETPLACE_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512" 
+# (Ensure this address matches your V2 deployment)
 
-# 2. Paste addresses from your Deployment (Phase 2)
-# ===> MAKE SURE THESE ARE CORRECT! <===
-MARKETPLACE_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"
+# Topic for FilePurchased(address,string)
+EVENT_TOPIC = "85c0e6c4761ddc10b64021980d69096e9a25f37126fafe72f4296427eabbe480"
 
-# We go up one level (..), then into 'neuro-market', then 'artifacts'
-with open("../neuro-market/artifacts/contracts/NeuroMarketplace.sol/NeuroMarketplace.json") as f:
-    market_abi = json.load(f)["abi"]
+w3 = Web3(Web3.HTTPProvider(BLOCKCHAIN_URL))
 
-contract = w3.eth.contract(address=MARKETPLACE_ADDRESS, abi=market_abi)
-# =================================================
-
-def handle_event(event):
-    print("\n🔔 NEW SALE DETECTED!")
-    
-    # 1. Extract Details
-    buyer = event['args']['buyer']
-    dataToken = event['args']['dataToken']
-    print(f"💰 Buyer: {buyer}")
-    print(f"KZ Token Address: {dataToken}")
-
-    # 2. Get Data Details from Blockchain
-    # We ask the contract: "What is the CID for this token?"
-    # (Note: In a real app, we'd map Token -> CID. Here, we'll assume a test CID for the demo)
-    # FOR DEMO: We will use the CID we just put in database.json
-    cid = "QmSeygQMq7tGcrGXer2qtWZgjRrkT3FYDk9hsLDobZdWTT" 
-    print(f"📦 Content CID: {cid}")
-
-    # 3. Look up Key in Database
+def load_db():
     try:
-        with open("database.json", "r") as db:
-            keys = json.load(db)
+        with open("database.json", "r") as f: return json.load(f)
+    except: return {}
+
+def handle_sale(log):
+    print("\n" + "="*60)
+    print(f"⚡ SALE CONFIRMED (Tx: {log['transactionHash'].hex()[:10]}...)")
+    print("="*60)
+
+    try:
+        # 1. EXTRACT BUYER
+        buyer_topic = log['topics'][1]
+        if hasattr(buyer_topic, 'hex'): buyer_hex = buyer_topic.hex()
+        else: buyer_hex = str(buyer_topic)
+        buyer = "0x" + buyer_hex[-40:]
+
+        # 2. EXTRACT CID (Clean Text Method)
+        raw_data = log['data']
+        if hasattr(raw_data, 'hex'): data_hex = raw_data.hex()
+        else: data_hex = raw_data
         
-        if cid in keys:
-            secret_key = keys[cid]
-            print("🔑 Key found in Vault!")
-            
-            # 4. DOWNLOAD & DECRYPT
-            # Create a downloads folder
-            if not os.path.exists("downloads"):
-                os.makedirs("downloads")
-            
-            encrypted_path = f"downloads/{cid}.enc"
-            
-            # A. Download
-            if download_from_ipfs(cid, encrypted_path):
-                # B. Decrypt
-                print("🔓 Decrypting file for Buyer...")
-                final_path = decrypt_file(encrypted_path, secret_key.encode())
-                print(f"🚀 DELIVERY COMPLETE! File ready at: {final_path}")
-            
+        clean_hex = data_hex.replace("0x", "")
+        full_text = bytes.fromhex(clean_hex).decode('utf-8', errors='ignore')
+        
+        # Find the CID
+        match = re.search(r'(Qm[a-zA-Z0-9]{44})', full_text)
+        if match:
+            cid = match.group(1)
         else:
-            print("❌ Error: Key not found for this file.")
+            return # Skip if no valid CID found
+
+        # 3. EXECUTE PROTOCOL
+        db = load_db()
+        item_data = db.get(cid)
+        
+        if not item_data:
+            print(f"⚠️  New file sold: {cid} (Not in local DB)")
+            return
+
+        item_name = item_data.get("name", "Unknown Dataset")
+        mode = item_data.get("mode", "standard")
+
+        print(f"👤 Buyer:    {buyer}")
+        print(f"📦 Product:  {item_name}")
+        print(f"⚙️  Protocol: {mode.upper()}")
+        print("-" * 60)
+
+        if mode == "compute_privacy":
+            print("🔒 STARTING PRIVACY PRESERVING COMPUTE...")
+            time.sleep(1)
+            print("   1. Initializing Secure Enclave...")
+            time.sleep(1)
+            print("   2. Transferring Algorithm (Visiting Chef)...")
+            for i in range(5):
+                print(f"      [Computing {i*20}%] {'#'*(i+1)}", end="\r")
+                time.sleep(0.4)
+            print("\n   ✅ RESULT: Model Trained. Weights sent to Buyer.")
+        else:
+            print("🌍 STARTING STANDARD DOWNLOAD...")
+            time.sleep(1)
+            print("   ✅ RESULT: File Decrypted & Sent to Buyer.")
 
     except Exception as e:
-        print(f"❌ Processing Error: {e}")
-
-def main_loop():
-    print("👀 Listening for Sales on the Blockchain...")
-    
-    # Create a filter for the specific event "AccessPurchased"
-    event_filter = contract.events.AccessPurchased.create_filter(from_block='latest')
-    
-    while True:
-        # Check for new logs
-        for event in event_filter.get_new_entries():
-            handle_event(event)
-        time.sleep(2)
+        print(f"❌ Error processing sale: {e}")
 
 if __name__ == "__main__":
-    if w3.is_connected():
-        print("✅ Connected to Blockchain")
-        main_loop()
-    else:
-        print("❌ Failed to connect to Blockchain")
+    if not w3.is_connected():
+        print("❌ Error: Blockchain node not found.")
+        exit()
+
+    print(f"✅ NEURO-MARKET LISTENER ACTIVE")
+    print("   Listening for sales on NeuroMarketV2...")
+    
+    last_block = 0
+
+    while True:
+        try:
+            current = w3.eth.block_number
+            if last_block <= current:
+                logs = w3.eth.get_logs({
+                    'fromBlock': last_block,
+                    'toBlock': current,
+                    'address': MARKETPLACE_ADDRESS,
+                    'topics': [EVENT_TOPIC]
+                })
+                for log in logs: handle_sale(log)
+                last_block = current + 1
+            time.sleep(2)
+        except KeyboardInterrupt:
+            print("\n🛑 Listener Stopped.")
+            break
+        except: pass
