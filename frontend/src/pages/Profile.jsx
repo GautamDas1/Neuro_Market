@@ -1,13 +1,10 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
-import axios from "axios"; // Ensure you installed this: npm install axios
+import axios from "axios"; 
 
-// ⚠️ YOUR ADDRESSES
-const MARKET_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
-const TOKEN_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; 
-
-// ⚠️ URL OF YOUR LOCAL PYTHON DAEMON
-const DAEMON_URL = "http://localhost:5000"; 
+// ⚠️ CHECK: Make sure these match your specific project details
+const MARKET_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"; // Your Contract Address
+const DAEMON_URL = "http://localhost:5000"; // Your Python Backend URL
 
 const Profile = () => {
   const [myListings, setMyListings] = useState([]);
@@ -15,8 +12,11 @@ const Profile = () => {
   const [loading, setLoading] = useState(true);
   const [userAddress, setUserAddress] = useState("");
   
-  // New state to store results from the daemon
+  // Stores the results from Python (e.g., "Identified: Sports Car")
   const [computeResults, setComputeResults] = useState({}); 
+  
+  // Stores the User's choice (e.g., "ai_image" or "health_train")
+  const [selectedAlgo, setSelectedAlgo] = useState("analyze_size");
 
   const marketAbi = [
     "function getAllDatasets() external view returns (address[])",
@@ -35,6 +35,7 @@ const Profile = () => {
 
         const marketContract = new ethers.Contract(MARKET_ADDRESS, marketAbi, provider);
 
+        // 1. Fetch All Listings (to find details for purchases)
         const allAddresses = await marketContract.getAllDatasets();
         const allData = await Promise.all(allAddresses.map(async (addr) => {
           const details = await marketContract.listings(addr);
@@ -43,24 +44,24 @@ const Profile = () => {
              publisher: details.publisher,
              price: ethers.formatUnits(details.price, 18),
              ipfsHash: details.ipfsHash,
-             isActive: details.isActive,
-             name: "Dataset " + addr.slice(0,6) 
+             isActive: details.isActive
           };
         }));
 
-        const myUploads = allData.filter(item => item.publisher.toLowerCase() === address.toLowerCase());
-        setMyListings(myUploads);
+        // Filter: What did I publish?
+        setMyListings(allData.filter(item => item.publisher.toLowerCase() === address.toLowerCase()));
 
+        // 2. Fetch My Purchases (Events)
         const filter = marketContract.filters.FilePurchased(address);
         const events = await marketContract.queryFilter(filter);
         
+        // Map events back to full data details
         const purchases = events.map(e => {
           const ipfsHash = e.args[1];
           const originalDetails = allData.find(d => d.ipfsHash === ipfsHash);
           return {
             ipfsHash: ipfsHash,
-            timestamp: e.blockNumber,
-            ...originalDetails
+            ...originalDetails // Spread original details (price, publisher, etc.)
           };
         });
         
@@ -76,65 +77,106 @@ const Profile = () => {
     loadProfile();
   }, []);
 
-  // --- NEW: Function to Trigger the Daemon ---
+  // --- THE CORE FUNCTION: TRIGGER COMPUTE ---
   const handleCompute = async (ipfsHash) => {
-    // 1. Set status to "Processing" in UI
-    setComputeResults(prev => ({ ...prev, [ipfsHash]: "⏳ Daemon is training model..." }));
+    // 1. Show "Loading..." state immediately
+    setComputeResults(prev => ({ 
+        ...prev, 
+        [ipfsHash]: `⏳ Connecting to Daemon... Running '${selectedAlgo}'...` 
+    }));
 
     try {
-      // 2. Send request to Python Daemon
-      // The daemon will fetch the hidden file, run the script, and return result.
+      // 2. Send Request to Python (Hash + Algo Choice)
       const response = await axios.post(`${DAEMON_URL}/compute`, {
         ipfsHash: ipfsHash,
-        algo: "generic-training-v1" // Example algorithm name
+        algo: selectedAlgo // <--- Sending the Dropdown Value!
       });
-
-      // 3. Show the result (e.g., "Accuracy: 98%")
-      setComputeResults(prev => ({ ...prev, [ipfsHash]: `✅ Result: ${response.data.result}` }));
+      
+      // 3. Show Success Message
+      setComputeResults(prev => ({ 
+          ...prev, 
+          [ipfsHash]: `✅ ${response.data.result}` 
+      }));
 
     } catch (error) {
       console.error("Daemon Error:", error);
-      setComputeResults(prev => ({ ...prev, [ipfsHash]: "❌ Error: Daemon offline or failed." }));
+      setComputeResults(prev => ({ 
+          ...prev, 
+          [ipfsHash]: "❌ Error: Daemon offline or Data not found." 
+      }));
     }
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 p-10 text-white">
-      <h1 className="text-4xl font-bold mb-2">👤 User Profile</h1>
-      <p className="text-gray-400 mb-10">Wallet: {userAddress}</p>
+    <div className="min-h-screen bg-slate-900 p-10 text-white font-sans">
+      <h1 className="text-4xl font-bold mb-2 text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-400">
+        👤 User Dashboard
+      </h1>
+      <p className="text-gray-400 mb-10 font-mono text-sm">Wallet: {userAddress}</p>
 
       {loading ? (
-        <div>Loading Profile...</div>
+        <div className="text-xl animate-pulse">Loading Blockchain Data...</div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
           
-          {/* MY LIBRARY (PURCHASED) */}
-          <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
-            <h2 className="text-2xl font-bold mb-6 text-green-400">📚 My Library (Compute Access)</h2>
+          {/* === SECTION 1: MY LIBRARY (PURCHASED) === */}
+          <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl">
+            <h2 className="text-2xl font-bold mb-6 text-green-400 flex items-center gap-2">
+              📚 My Library <span className="text-xs bg-green-900 text-green-300 px-2 py-1 rounded-full">Compute Access</span>
+            </h2>
+            
             {myPurchases.length === 0 ? (
-              <p className="text-gray-500">You haven't bought anything yet.</p>
+              <p className="text-gray-500 italic">You haven't purchased any datasets yet.</p>
             ) : (
-              <div className="space-y-4">
+              <div className="space-y-6">
                 {myPurchases.map((item, idx) => (
-                  <div key={idx} className="bg-slate-900 p-4 rounded-xl">
-                    <div className="flex justify-between items-center mb-2">
-                      <div>
-                        <div className="font-bold text-lg">📦 {item.ipfsHash.slice(0, 15)}...</div>
-                        <div className="text-xs text-gray-500">Source: {item.publisher ? item.publisher.slice(0,6) : "Unknown"}...</div>
-                      </div>
-                      
-                      {/* COMPUTE BUTTON (Instead of Download) */}
-                      <button 
-                        onClick={() => handleCompute(item.ipfsHash)}
-                        className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm font-bold shadow-lg shadow-blue-900/50"
-                      >
-                        ⚡ Run Compute
-                      </button>
+                  <div key={idx} className="bg-slate-900 p-5 rounded-xl border border-slate-700 hover:border-blue-500 transition duration-300">
+                    
+                    {/* File Header */}
+                    <div className="flex justify-between items-start mb-4">
+                        <div>
+                            <div className="font-bold text-lg text-white">📦 Data: {item.ipfsHash.slice(0, 15)}...</div>
+                            <div className="text-xs text-gray-500">Publisher: {item.publisher?.slice(0,10)}...</div>
+                        </div>
+                        <span className="bg-blue-900 text-blue-300 text-xs px-2 py-1 rounded">Owned</span>
+                    </div>
+                    
+                    {/* COMPUTE CONTROLS */}
+                    <div className="bg-slate-800 p-3 rounded-lg border border-slate-600">
+                        <label className="text-xs text-gray-400 font-bold uppercase mb-1 block">
+                            Select AI Model:
+                        </label>
+                        
+                        <div className="flex flex-col sm:flex-row gap-2">
+                            {/* 1. DROPDOWN MENU */}
+                            <select 
+                                value={selectedAlgo}
+                                onChange={(e) => setSelectedAlgo(e.target.value)} 
+                                className="bg-slate-700 text-white text-sm p-2 rounded border border-slate-600 outline-none flex-grow hover:bg-slate-600 cursor-pointer"
+                            >
+                                <option value="analyze_size">📊 Simple Check (File Size)</option>
+                                <option value="ai_image">🧠 MobileNet V2 (Image AI)</option>
+                                <option value="health_train">🏥 Health Prediction (CSV)</option>
+                                <option value="nlp_train">📜 Story Analyzer (NLP)</option>
+                            </select>
+
+                            {/* 2. RUN BUTTON */}
+                            <button 
+                                onClick={() => handleCompute(item.ipfsHash)}
+                                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-500 hover:to-purple-500 text-white px-4 py-2 rounded text-sm font-bold shadow-lg transform active:scale-95 transition"
+                            >
+                                ⚡ Run Compute
+                            </button>
+                        </div>
                     </div>
 
-                    {/* RESULT BOX */}
+                    {/* 3. RESULT DISPLAY AREA */}
                     {computeResults[item.ipfsHash] && (
-                      <div className="mt-2 p-3 bg-black/40 rounded border border-blue-900 text-sm font-mono text-cyan-300">
+                      <div className={`mt-4 p-3 rounded border text-sm font-mono whitespace-pre-wrap ${
+                          computeResults[item.ipfsHash].includes("Error") 
+                          ? "bg-red-900/30 border-red-500 text-red-300" 
+                          : "bg-black/50 border-green-500/50 text-green-400 shadow-inner"
+                      }`}>
                         {computeResults[item.ipfsHash]}
                       </div>
                     )}
@@ -144,22 +186,20 @@ const Profile = () => {
             )}
           </div>
 
-          {/* MY LISTINGS (SOLD) */}
-          <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
-            <h2 className="text-2xl font-bold mb-6 text-purple-400">🏷️ My Listings (Published)</h2>
+          {/* === SECTION 2: MY LISTINGS (PUBLISHED) === */}
+          <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl opacity-80">
+            <h2 className="text-2xl font-bold mb-6 text-purple-400">🏷️ My Listings</h2>
             {myListings.length === 0 ? (
-              <p className="text-gray-500">You haven't published any datasets.</p>
+               <p className="text-gray-500 italic">No listings found.</p>
             ) : (
               <div className="space-y-4">
                 {myListings.map((item) => (
-                  <div key={item.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-                    <div className="flex justify-between">
-                      <span className="font-bold">Data: {item.ipfsHash.slice(0,10)}...</span>
-                      <span className={`text-xs px-2 py-1 rounded ${item.isActive ? 'bg-green-900 text-green-200' : 'bg-red-900 text-red-200'}`}>
-                        {item.isActive ? "ACTIVE" : "SOLD"}
-                      </span>
+                  <div key={item.id} className="bg-slate-900 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
+                    <div>
+                        <span className="font-bold block text-gray-300">Data: {item.ipfsHash.slice(0,10)}...</span>
+                        <span className="text-xs text-green-500">● Active</span>
                     </div>
-                    <div className="mt-2 text-purple-400 font-mono text-sm">{item.price} NRO</div>
+                    <div className="text-purple-400 font-mono font-bold">{item.price} NRO</div>
                   </div>
                 ))}
               </div>
