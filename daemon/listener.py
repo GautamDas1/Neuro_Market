@@ -1,108 +1,66 @@
 import time
-import json
-import re
-from web3 import Web3
+import requests 
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+import urllib3
 
-# ================= CONFIGURATION =================
-BLOCKCHAIN_URL = "http://127.0.0.1:8545"
-MARKETPLACE_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512" 
-# (Ensure this address matches your V2 deployment)
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Topic for FilePurchased(address,string)
-EVENT_TOPIC = "85c0e6c4761ddc10b64021980d69096e9a25f37126fafe72f4296427eabbe480"
+app = Flask(__name__)
+CORS(app)
 
-w3 = Web3(Web3.HTTPProvider(BLOCKCHAIN_URL))
+print("\n" + "="*60)
+print("✅ NEURO-MARKET ROBUST COMPUTE NODE ACTIVE")
+print("🔌 Listening on Port 5000...")
+print("="*60 + "\n")
 
-def load_db():
-    try:
-        with open("database.json", "r") as f: return json.load(f)
-    except: return {}
-
-def handle_sale(log):
-    print("\n" + "="*60)
-    print(f"⚡ SALE CONFIRMED (Tx: {log['transactionHash'].hex()[:10]}...)")
-    print("="*60)
-
-    try:
-        # 1. EXTRACT BUYER
-        buyer_topic = log['topics'][1]
-        if hasattr(buyer_topic, 'hex'): buyer_hex = buyer_topic.hex()
-        else: buyer_hex = str(buyer_topic)
-        buyer = "0x" + buyer_hex[-40:]
-
-        # 2. EXTRACT CID (Clean Text Method)
-        raw_data = log['data']
-        if hasattr(raw_data, 'hex'): data_hex = raw_data.hex()
-        else: data_hex = raw_data
-        
-        clean_hex = data_hex.replace("0x", "")
-        full_text = bytes.fromhex(clean_hex).decode('utf-8', errors='ignore')
-        
-        # Find the CID
-        match = re.search(r'(Qm[a-zA-Z0-9]{44})', full_text)
-        if match:
-            cid = match.group(1)
-        else:
-            return # Skip if no valid CID found
-
-        # 3. EXECUTE PROTOCOL
-        db = load_db()
-        item_data = db.get(cid)
-        
-        if not item_data:
-            print(f"⚠️  New file sold: {cid} (Not in local DB)")
-            return
-
-        item_name = item_data.get("name", "Unknown Dataset")
-        mode = item_data.get("mode", "standard")
-
-        print(f"👤 Buyer:    {buyer}")
-        print(f"📦 Product:  {item_name}")
-        print(f"⚙️  Protocol: {mode.upper()}")
-        print("-" * 60)
-
-        if mode == "compute_privacy":
-            print("🔒 STARTING PRIVACY PRESERVING COMPUTE...")
-            time.sleep(1)
-            print("   1. Initializing Secure Enclave...")
-            time.sleep(1)
-            print("   2. Transferring Algorithm (Visiting Chef)...")
-            for i in range(5):
-                print(f"      [Computing {i*20}%] {'#'*(i+1)}", end="\r")
-                time.sleep(0.4)
-            print("\n   ✅ RESULT: Model Trained. Weights sent to Buyer.")
-        else:
-            print("🌍 STARTING STANDARD DOWNLOAD...")
-            time.sleep(1)
-            print("   ✅ RESULT: File Decrypted & Sent to Buyer.")
-
-    except Exception as e:
-        print(f"❌ Error processing sale: {e}")
-
-if __name__ == "__main__":
-    if not w3.is_connected():
-        print("❌ Error: Blockchain node not found.")
-        exit()
-
-    print(f"✅ NEURO-MARKET LISTENER ACTIVE")
-    print("   Listening for sales on NeuroMarketV2...")
+@app.route('/compute', methods=['POST'])
+def run_compute():
+    data = request.json
+    ipfs_hash = data.get('ipfsHash', '')
+    clean_hash = ipfs_hash.replace("ipfs://", "")
     
-    last_block = 0
+    # 🛡️ LIST OF GATEWAYS TO TRY (In case WiFi blocks one)
+    gateways = [
+        f"https://cloudflare-ipfs.com/ipfs/{clean_hash}",  # Fast & Open
+        f"https://ipfs.io/ipfs/{clean_hash}",              # Official
+        f"https://gateway.pinata.cloud/ipfs/{clean_hash}", # Pinata
+        f"https://dweb.link/ipfs/{clean_hash}"             # Backup
+    ]
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+    }
 
-    while True:
+    print(f"\n⚡ NEW JOB: Processing {clean_hash}...")
+
+    # --- LOOP THROUGH GATEWAYS UNTIL ONE WORKS ---
+    for url in gateways:
         try:
-            current = w3.eth.block_number
-            if last_block <= current:
-                logs = w3.eth.get_logs({
-                    'fromBlock': last_block,
-                    'toBlock': current,
-                    'address': MARKETPLACE_ADDRESS,
-                    'topics': [EVENT_TOPIC]
+            print(f"   Trying Gateway: {url} ...")
+            response = requests.get(url, headers=headers, verify=False, timeout=10)
+            
+            if response.status_code == 200:
+                # SUCCESS! We found a working door.
+                file_size = len(response.content)
+                print(f"   ✅ SUCCESS! Downloaded {file_size} bytes.")
+                
+                return jsonify({
+                    "status": "success", 
+                    "result": f"Verified Real Data via {url.split('/')[2]}. Size: {file_size} bytes."
                 })
-                for log in logs: handle_sale(log)
-                last_block = current + 1
-            time.sleep(2)
-        except KeyboardInterrupt:
-            print("\n🛑 Listener Stopped.")
-            break
-        except: pass
+            else:
+                print(f"   ❌ Blocked ({response.status_code}). Trying next...")
+                
+        except Exception as e:
+            print(f"   ⚠️ Connection Error on this gateway. Trying next...")
+
+    # IF ALL FAIL:
+    print("   ❌ ALL GATEWAYS FAILED. (Likely WiFi Block)")
+    return jsonify({
+        "status": "error", 
+        "result": "Network Error: WiFi is blocking all IPFS connections."
+    }), 500
+
+if __name__ == '__main__':
+    app.run(port=5000)

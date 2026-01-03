@@ -1,20 +1,27 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
+import axios from "axios"; // Ensure you installed this: npm install axios
 
-// ⚠️ PASTE YOUR TERMINAL ADDRESSES HERE ⚠️
+// ⚠️ YOUR ADDRESSES
 const MARKET_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 const TOKEN_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; 
+
+// ⚠️ URL OF YOUR LOCAL PYTHON DAEMON
+const DAEMON_URL = "http://localhost:5000"; 
 
 const Profile = () => {
   const [myListings, setMyListings] = useState([]);
   const [myPurchases, setMyPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [userAddress, setUserAddress] = useState("");
+  
+  // New state to store results from the daemon
+  const [computeResults, setComputeResults] = useState({}); 
 
   const marketAbi = [
     "function getAllDatasets() external view returns (address[])",
     "function listings(address) public view returns (address dataTokenAddress, address publisher, uint256 price, bool isActive, uint256 stakedAmount, string ipfsHash)",
-    "event FilePurchased(address indexed buyer, string dataTokenURI)" // <--- We need this to find your buys!
+    "event FilePurchased(address indexed buyer, string dataTokenURI)"
   ];
 
   useEffect(() => {
@@ -28,7 +35,6 @@ const Profile = () => {
 
         const marketContract = new ethers.Contract(MARKET_ADDRESS, marketAbi, provider);
 
-        // --- 1. FETCH ALL DATASETS (To find names & details) ---
         const allAddresses = await marketContract.getAllDatasets();
         const allData = await Promise.all(allAddresses.map(async (addr) => {
           const details = await marketContract.listings(addr);
@@ -38,29 +44,23 @@ const Profile = () => {
              price: ethers.formatUnits(details.price, 18),
              ipfsHash: details.ipfsHash,
              isActive: details.isActive,
-             // We'll use this simply to match IPFS hashes later
-             name: "Dataset " + addr.slice(0,6) // (If you stored Name on-chain we could fetch it, but for now we use ID)
+             name: "Dataset " + addr.slice(0,6) 
           };
         }));
 
-        // --- 2. FILTER: MY LISTINGS (Things I published) ---
         const myUploads = allData.filter(item => item.publisher.toLowerCase() === address.toLowerCase());
         setMyListings(myUploads);
 
-        // --- 3. FILTER: MY PURCHASES (Things I bought) ---
-        // We look for the "FilePurchased" receipt where 'buyer' == ME
         const filter = marketContract.filters.FilePurchased(address);
         const events = await marketContract.queryFilter(filter);
         
-        // Map the events to the actual file data
         const purchases = events.map(e => {
-          const ipfsHash = e.args[1]; // The 2nd argument in the event is the Hash
-          // Try to find the original listing details to make it look nice
+          const ipfsHash = e.args[1];
           const originalDetails = allData.find(d => d.ipfsHash === ipfsHash);
           return {
             ipfsHash: ipfsHash,
             timestamp: e.blockNumber,
-            ...originalDetails // Merge with price/publisher info if found
+            ...originalDetails
           };
         });
         
@@ -76,6 +76,28 @@ const Profile = () => {
     loadProfile();
   }, []);
 
+  // --- NEW: Function to Trigger the Daemon ---
+  const handleCompute = async (ipfsHash) => {
+    // 1. Set status to "Processing" in UI
+    setComputeResults(prev => ({ ...prev, [ipfsHash]: "⏳ Daemon is training model..." }));
+
+    try {
+      // 2. Send request to Python Daemon
+      // The daemon will fetch the hidden file, run the script, and return result.
+      const response = await axios.post(`${DAEMON_URL}/compute`, {
+        ipfsHash: ipfsHash,
+        algo: "generic-training-v1" // Example algorithm name
+      });
+
+      // 3. Show the result (e.g., "Accuracy: 98%")
+      setComputeResults(prev => ({ ...prev, [ipfsHash]: `✅ Result: ${response.data.result}` }));
+
+    } catch (error) {
+      console.error("Daemon Error:", error);
+      setComputeResults(prev => ({ ...prev, [ipfsHash]: "❌ Error: Daemon offline or failed." }));
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-900 p-10 text-white">
       <h1 className="text-4xl font-bold mb-2">👤 User Profile</h1>
@@ -86,34 +108,43 @@ const Profile = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
           
-          {/* SECTION 1: MY LIBRARY (BOUGHT) */}
+          {/* MY LIBRARY (PURCHASED) */}
           <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
-            <h2 className="text-2xl font-bold mb-6 text-green-400">📚 My Library (Purchased)</h2>
+            <h2 className="text-2xl font-bold mb-6 text-green-400">📚 My Library (Compute Access)</h2>
             {myPurchases.length === 0 ? (
               <p className="text-gray-500">You haven't bought anything yet.</p>
             ) : (
               <div className="space-y-4">
                 {myPurchases.map((item, idx) => (
-                  <div key={idx} className="bg-slate-900 p-4 rounded-xl flex justify-between items-center">
-                    <div>
-                      <div className="font-bold text-lg">📦 {item.ipfsHash.slice(0, 15)}...</div>
-                      <div className="text-xs text-gray-500">Purchased from: {item.publisher ? item.publisher.slice(0,6) : "Unknown"}...</div>
+                  <div key={idx} className="bg-slate-900 p-4 rounded-xl">
+                    <div className="flex justify-between items-center mb-2">
+                      <div>
+                        <div className="font-bold text-lg">📦 {item.ipfsHash.slice(0, 15)}...</div>
+                        <div className="text-xs text-gray-500">Source: {item.publisher ? item.publisher.slice(0,6) : "Unknown"}...</div>
+                      </div>
+                      
+                      {/* COMPUTE BUTTON (Instead of Download) */}
+                      <button 
+                        onClick={() => handleCompute(item.ipfsHash)}
+                        className="bg-blue-600 hover:bg-blue-500 px-4 py-2 rounded text-sm font-bold shadow-lg shadow-blue-900/50"
+                      >
+                        ⚡ Run Compute
+                      </button>
                     </div>
-                    <a 
-                      href={`https://ipfs.io/ipfs/${item.ipfsHash.replace("ipfs://", "")}`} 
-                      target="_blank" 
-                      rel="noreferrer"
-                      className="bg-green-600 hover:bg-green-500 px-4 py-2 rounded text-sm font-bold"
-                    >
-                      Download
-                    </a>
+
+                    {/* RESULT BOX */}
+                    {computeResults[item.ipfsHash] && (
+                      <div className="mt-2 p-3 bg-black/40 rounded border border-blue-900 text-sm font-mono text-cyan-300">
+                        {computeResults[item.ipfsHash]}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
             )}
           </div>
 
-          {/* SECTION 2: MY LISTINGS (SOLD) */}
+          {/* MY LISTINGS (SOLD) */}
           <div className="bg-slate-800 p-6 rounded-2xl border border-slate-700">
             <h2 className="text-2xl font-bold mb-6 text-purple-400">🏷️ My Listings (Published)</h2>
             {myListings.length === 0 ? (
