@@ -11,6 +11,18 @@ from io import BytesIO
 import re
 from collections import Counter
 import traceback # <--- ESSENTIAL FOR DEBUGGING
+import sqlite3   # <--- NEW: For Database
+import bcrypt    # <--- NEW: For Password Security
+
+# --- DATABASE SETUP ---
+def init_db():
+    conn = sqlite3.connect('users.db', check_same_thread=False)
+    c = conn.cursor()
+    # Create table if it doesn't exist
+    c.execute('''CREATE TABLE IF NOT EXISTS users 
+                 (username TEXT PRIMARY KEY, password TEXT, role TEXT)''')
+    conn.commit()
+    return conn
 
 # --- AI SETUP ---
 model = None
@@ -27,12 +39,63 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 app = Flask(__name__)
 CORS(app)
 
+# Initialize Database
+db = init_db()
+
 print("\n" + "="*60)
-print("✅ NEURO-MARKET DEBUG NODE ACTIVE")
-print("🔌 Listening on Port 5000...")
+print("✅ NEURO-MARKET FULL-STACK NODE ACTIVE")
+print("🔌 Listening on Port 5000 (Auth + Compute)...")
 print("="*60 + "\n")
 
-# --- SKILLS ---
+# ================= AUTHENTICATION ROUTES (NEW) =================
+
+@app.route('/register', methods=['POST'])
+def register():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+    role = data.get('role', 'Data Scientist')
+
+    if not username or not password:
+        return jsonify({"status": "error", "message": "Missing fields"}), 400
+
+    # 1. Encrypt Password
+    hashed_pw = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
+
+    try:
+        # 2. Save to DB
+        cursor = db.cursor()
+        cursor.execute("INSERT INTO users VALUES (?, ?, ?)", (username, hashed_pw, role))
+        db.commit()
+        print(f"👤 NEW USER REGISTERED: {username}")
+        return jsonify({"status": "success", "message": "Account created!"})
+    except sqlite3.IntegrityError:
+        return jsonify({"status": "error", "message": "Username already exists"}), 409
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+
+    cursor = db.cursor()
+    cursor.execute("SELECT password, role FROM users WHERE username=?", (username,))
+    user = cursor.fetchone()
+
+    if user:
+        stored_hash = user[0]
+        role = user[1]
+        # 3. Check Password
+        if bcrypt.checkpw(password.encode('utf-8'), stored_hash):
+            print(f"🔓 LOGIN SUCCESS: {username}")
+            return jsonify({"status": "success", "role": role})
+    
+    print(f"❌ LOGIN FAILED: {username}")
+    return jsonify({"status": "error", "message": "Invalid Credentials"}), 401
+
+
+# ================= EXISTING SKILLS & COMPUTE =================
+
 def analyze_image(content):
     try:
         img = Image.open(BytesIO(content)).resize((224, 224))
@@ -63,10 +126,12 @@ def train_text_model(content):
         words = re.findall(r'\w+', text.lower())
         return f"✅ NLP Model Trained! Word Count: {len(words)}"
     except Exception as e: return f"Text Logic Error: {str(e)}"
-# --- NEW: HEALTH CHECK ROUTE ---
+
+# --- HEALTH CHECK ROUTE ---
 @app.route('/health', methods=['GET'])
 def health_check():
-    return jsonify({"status": "online", "system": "active"})
+    return jsonify({"status": "online", "system": "active", "db": "connected"})
+
 # --- MAIN ROUTE ---
 @app.route('/compute', methods=['POST'])
 def run_compute():

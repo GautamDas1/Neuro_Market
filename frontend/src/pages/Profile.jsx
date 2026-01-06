@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import axios from "axios";
-import { Terminal, Box, Activity, Server, Lock, ArrowRight, Command, Power, RefreshCw } from "lucide-react";
+import { Terminal, Box, Activity, Server, Lock, ArrowRight, Command, Power, RefreshCw, User, Edit2, Save } from "lucide-react";
+// 1. IMPORT TOAST
+import toast from 'react-hot-toast';
 
 // ⚠️ YOUR ADDRESSES
 const MARKET_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"; 
@@ -11,35 +13,34 @@ const Profile = () => {
   const [myListings, setMyListings] = useState([]);
   const [myPurchases, setMyPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [processing, setProcessing] = useState(null); // Track which item is updating
+  const [processing, setProcessing] = useState(null);
   const [userAddress, setUserAddress] = useState("");
   const [computeResults, setComputeResults] = useState({}); 
   const [selectedAlgo, setSelectedAlgo] = useState("ai_image");
   
-  // ⚡ NODE HEALTH STATE
   const [nodeStatus, setNodeStatus] = useState("CONNECTING...");
   const [latency, setLatency] = useState(0);
   const [isOnline, setIsOnline] = useState(false);
 
+  // 👤 SIMPLE IDENTITY STATE (No Email/Bio)
+  const [isEditing, setIsEditing] = useState(false);
+  const [identity, setIdentity] = useState({ name: "Loading...", role: "..." });
+
   useEffect(() => {
-    // Inject Grid
-    const styleSheet = document.createElement("style");
-    styleSheet.innerText = `
-      .bg-grid {
-        background-size: 40px 40px;
-        background-image: linear-gradient(to right, #f0f0f0 1px, transparent 1px),
-                          linear-gradient(to bottom, #f0f0f0 1px, transparent 1px);
-      }
-    `;
-    document.head.appendChild(styleSheet);
-    
-    // Auto-reload on account change
-    if(window.ethereum) {
-        window.ethereum.on('accountsChanged', () => window.location.reload());
-    }
+    // Load Simple Identity
+    const storedName = localStorage.getItem("neuro_user") || "Anonymous";
+    const storedRole = localStorage.getItem("neuro_role") || "Node Operator";
+    setIdentity({ name: storedName, role: storedRole });
 
     loadProfile();
   }, []);
+
+  const saveIdentity = () => {
+      localStorage.setItem("neuro_user", identity.name);
+      localStorage.setItem("neuro_role", identity.role);
+      setIsEditing(false);
+      toast.success("IDENTITY UPDATED");
+  };
 
   const loadProfile = async () => {
       if (!window.ethereum) return;
@@ -58,17 +59,8 @@ const Profile = () => {
         const allAddresses = await marketContract.getAllDatasets();
         const allData = await Promise.all(allAddresses.map(async (addr) => {
           const d = await marketContract.listings(addr);
-          
-          // ⚡ UNPACK NAME
           const parts = d[5].split("||");
-          return { 
-              id: addr, 
-              publisher: d[1], 
-              price: ethers.formatUnits(d[2], 18), 
-              ipfsHash: parts[0], 
-              name: parts[1] || "Dataset",
-              isActive: d[3] // We need this to show status
-          };
+          return { id: addr, publisher: d[1], price: ethers.formatUnits(d[2], 18), ipfsHash: parts[0], name: parts[1] || "Dataset", isActive: d[3] };
         }));
 
         setMyListings(allData.filter(item => item.publisher.toLowerCase() === address.toLowerCase()));
@@ -80,12 +72,10 @@ const Profile = () => {
           const parts = rawHash.split("||");
           return { ipfsHash: parts[0], name: parts[1] || "Dataset" };
         });
-        
         setMyPurchases(purchases);
       } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
-  // ⚡ PING SYSTEM
   useEffect(() => {
     const checkNode = async () => {
         const start = Date.now();
@@ -107,53 +97,87 @@ const Profile = () => {
   }, []);
 
   const handleCompute = async (ipfsHash) => {
-    setComputeResults(prev => ({ ...prev, [ipfsHash]: "..." })); 
+    setComputeResults(prev => ({ ...prev, [ipfsHash]: "Initializing..." })); 
+    // 2. USE TOAST
+    const toastId = toast.loading("Allocating Compute Resources...");
+
     try {
       const response = await axios.post(`${DAEMON_URL}/compute`, { ipfsHash, algo: selectedAlgo });
       setComputeResults(prev => ({ ...prev, [ipfsHash]: response.data.result }));
+      toast.success("COMPUTE SUCCESSFUL", { id: toastId });
     } catch (error) {
       setComputeResults(prev => ({ ...prev, [ipfsHash]: "Error: Daemon Connection Failed" }));
+      toast.error("COMPUTE FAILED", { id: toastId });
     }
   };
 
-  // 🔴 UNPUBLISH FUNCTION
   const toggleStatus = async (datasetAddress) => {
       setProcessing(datasetAddress);
+      // 3. USE TOAST
+      const toastId = toast.loading("Updating Blockchain Status...");
+
       try {
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
-        
-        // Ensure your ABI includes the toggle function
-        const marketContract = new ethers.Contract(MARKET_ADDRESS, [
-            "function toggleStatus(address _dataToken) external" 
-        ], signer);
-
+        const marketContract = new ethers.Contract(MARKET_ADDRESS, ["function toggleStatus(address _dataToken) external"], signer);
         const tx = await marketContract.toggleStatus(datasetAddress);
         await tx.wait();
         
-        // Reload data to reflect changes
-        await loadProfile();
-        
-      } catch (error) {
-          console.error("Unpublish Error:", error);
-          alert("Failed to change status. Check console.");
-      } finally {
-          setProcessing(null);
-      }
+        await loadProfile(); 
+        toast.success("STATUS UPDATED", { id: toastId });
+
+      } catch (error) { 
+          console.error("Unpublish Error:", error); 
+          toast.error("UPDATE FAILED: " + (error.reason || "Unknown"), { id: toastId });
+      } 
+      finally { setProcessing(null); }
   };
 
   return (
     <div className="min-h-screen bg-white text-zinc-900 font-sans selection:bg-zinc-900 selection:text-white bg-grid">
       
-      {/* HEADER (Navbar removed since App.jsx handles it) */}
-
       <main className="max-w-6xl mx-auto p-6 md:p-10 space-y-12">
         
-        <div className="flex flex-col gap-2 border-l-2 border-zinc-900 pl-6">
-            <h1 className="text-4xl font-bold tracking-tighter text-zinc-900">User Workspace</h1>
-            <p className="text-zinc-500 font-medium">Manage datasets and execute decentralized algorithms.</p>
+        {/* HEADER AREA */}
+        <div className="flex flex-col md:flex-row justify-between items-end gap-6 border-b border-zinc-200 pb-8">
+            <div className="flex flex-col gap-2 border-l-2 border-zinc-900 pl-6">
+                <h1 className="text-4xl font-bold tracking-tighter text-zinc-900">User Workspace</h1>
+                <p className="text-zinc-500 font-medium">Manage datasets and execute decentralized algorithms.</p>
+            </div>
+
+            {/* 👤 SIMPLE IDENTITY CARD (Clean Version) */}
+            <div className="bg-zinc-50 border border-zinc-200 rounded-xl p-4 flex items-center gap-4 w-full md:w-auto min-w-[300px]">
+                <div className="w-12 h-12 bg-zinc-900 rounded-full flex items-center justify-center text-white">
+                    <User size={24} />
+                </div>
+                <div className="flex-grow">
+                    {isEditing ? (
+                        <div className="space-y-2">
+                            <input 
+                                className="w-full text-sm font-bold bg-white border border-zinc-300 rounded px-2 py-1"
+                                value={identity.name}
+                                onChange={(e) => setIdentity({...identity, name: e.target.value})}
+                            />
+                            <input 
+                                className="w-full text-xs font-mono bg-white border border-zinc-300 rounded px-2 py-1"
+                                value={identity.role}
+                                onChange={(e) => setIdentity({...identity, role: e.target.value})}
+                            />
+                        </div>
+                    ) : (
+                        <div>
+                            <div className="font-bold text-zinc-900">{identity.name}</div>
+                            <div className="text-xs text-zinc-500 font-mono uppercase tracking-wide">{identity.role}</div>
+                        </div>
+                    )}
+                </div>
+                <button onClick={() => isEditing ? saveIdentity() : setIsEditing(true)} className="text-zinc-400 hover:text-zinc-900">
+                    {isEditing ? <Save size={18} /> : <Edit2 size={18} />}
+                </button>
+            </div>
         </div>
 
+        {/* REST OF THE PAGE (UNCHANGED LOGIC) */}
         {loading ? (
             <div className="border border-zinc-200 p-12 text-center text-zinc-400 animate-pulse bg-white">
                 Loading Assets...
@@ -228,7 +252,7 @@ const Profile = () => {
                     )}
                 </div>
 
-                {/* RIGHT: INVENTORY & STATUS */}
+                {/* RIGHT: INVENTORY */}
                 <div className="space-y-6">
                     <h2 className="text-sm font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-2">
                         <Box size={14} /> Inventory
@@ -253,8 +277,6 @@ const Profile = () => {
                                             </div>
                                             <div className="text-[10px] text-zinc-500 font-mono mt-0.5">{item.price} NRO</div>
                                         </div>
-                                        
-                                        {/* 🔴 UNPUBLISH BUTTON */}
                                         <button 
                                             onClick={() => toggleStatus(item.id)}
                                             disabled={processing === item.id}
@@ -263,13 +285,8 @@ const Profile = () => {
                                                 ? "border-zinc-200 text-zinc-400 hover:text-red-500 hover:border-red-200 hover:bg-red-50" 
                                                 : "border-green-200 text-green-500 hover:bg-green-50"
                                             }`}
-                                            title={item.isActive ? "Deactivate Listing" : "Reactivate Listing"}
                                         >
-                                            {processing === item.id ? (
-                                                <RefreshCw size={14} className="animate-spin"/>
-                                            ) : (
-                                                <Power size={14} />
-                                            )}
+                                            {processing === item.id ? <RefreshCw size={14} className="animate-spin"/> : <Power size={14} />}
                                         </button>
                                     </div>
                                 ))
@@ -277,7 +294,6 @@ const Profile = () => {
                         </div>
                     </div>
 
-                    {/* STATUS CARD */}
                     <div className={`rounded p-5 transition-colors duration-500 ${isOnline ? "bg-zinc-900 text-white" : "bg-red-50 border border-red-200 text-red-900"}`}>
                         <div className="flex items-center gap-3 mb-4">
                             <Activity size={18} className={isOnline ? "text-emerald-400" : "text-red-500 animate-pulse"} />
