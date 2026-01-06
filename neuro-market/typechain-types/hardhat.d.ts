@@ -50,10 +50,6 @@ declare module "hardhat/types/runtime" {
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.DataToken__factory>;
     getContractFactory(
-      name: "NeuroMarketplace",
-      signerOrOptions?: ethers.Signer | FactoryOptions
-    ): Promise<Contracts.NeuroMarketplace__factory>;
-    getContractFactory(
       name: "NeuroMarketV2",
       signerOrOptions?: ethers.Signer | FactoryOptions
     ): Promise<Contracts.NeuroMarketV2__factory>;
@@ -108,11 +104,6 @@ declare module "hardhat/types/runtime" {
       signer?: ethers.Signer
     ): Promise<Contracts.DataToken>;
     getContractAt(
-      name: "NeuroMarketplace",
-      address: string | ethers.Addressable,
-      signer?: ethers.Signer
-    ): Promise<Contracts.NeuroMarketplace>;
-    getContractAt(
       name: "NeuroMarketV2",
       address: string | ethers.Addressable,
       signer?: ethers.Signer
@@ -159,10 +150,6 @@ declare module "hardhat/types/runtime" {
       name: "DataToken",
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.DataToken>;
-    deployContract(
-      name: "NeuroMarketplace",
-      signerOrOptions?: ethers.Signer | DeployContractOptions
-    ): Promise<Contracts.NeuroMarketplace>;
     deployContract(
       name: "NeuroMarketV2",
       signerOrOptions?: ethers.Signer | DeployContractOptions
@@ -217,11 +204,6 @@ declare module "hardhat/types/runtime" {
       args: any[],
       signerOrOptions?: ethers.Signer | DeployContractOptions
     ): Promise<Contracts.DataToken>;
-    deployContract(
-      name: "NeuroMarketplace",
-      args: any[],
-      signerOrOptions?: ethers.Signer | DeployContractOptions
-    ): Promise<Contracts.NeuroMarketplace>;
     deployContract(
       name: "NeuroMarketV2",
       args: any[],

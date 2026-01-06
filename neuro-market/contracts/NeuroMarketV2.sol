@@ -5,7 +5,6 @@ import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "./DataToken.sol";
 
-// NAME CHANGED TO V2
 contract NeuroMarketV2 is ReentrancyGuard {
     IERC20 public neuroToken;
     uint256 public constant STAKE_AMOUNT = 50 * 10**18; 
@@ -23,9 +22,10 @@ contract NeuroMarketV2 is ReentrancyGuard {
     address[] public allDatasets;
 
     event DatasetPublished(address indexed dataToken, address indexed publisher, uint256 price);
-    
-    // THIS IS THE EVENT WE WANT
     event FilePurchased(address indexed buyer, string dataTokenURI);
+    
+    // NEW EVENT FOR STATUS CHANGE
+    event StatusChanged(address indexed dataToken, bool newStatus);
 
     constructor(address _neuroTokenAddress) {
         neuroToken = IERC20(_neuroTokenAddress);
@@ -47,7 +47,7 @@ contract NeuroMarketV2 is ReentrancyGuard {
             dataTokenAddress: address(newDataToken),
             publisher: msg.sender,
             price: _price,
-            isActive: true,
+            isActive: true, // Active by default
             stakedAmount: STAKE_AMOUNT,
             ipfsHash: _ipfsHash 
         });
@@ -58,17 +58,29 @@ contract NeuroMarketV2 is ReentrancyGuard {
 
     function buyAccess(address _dataTokenAddress) external nonReentrant {
         DatasetListing memory listing = listings[_dataTokenAddress];
-        require(listing.isActive, "Dataset not active");
+        require(listing.isActive, "Dataset is currently INACTIVE"); // Check status
         
         uint256 price = listing.price;
         address seller = listing.publisher;
 
         require(neuroToken.transferFrom(msg.sender, seller, price), "Payment failed");
         
-        // EMIT THE CID
         emit FilePurchased(msg.sender, listing.ipfsHash);
     }
     
+    // --- 🔴 NEW FUNCTION: UNPUBLISH / TOGGLE STATUS ---
+    function toggleStatus(address _dataTokenAddress) external {
+        DatasetListing storage listing = listings[_dataTokenAddress];
+        
+        // Security Check: Only the publisher can change the status
+        require(msg.sender == listing.publisher, "Only publisher can change status");
+        
+        // Flip the switch (True -> False OR False -> True)
+        listing.isActive = !listing.isActive;
+        
+        emit StatusChanged(_dataTokenAddress, listing.isActive);
+    }
+
     function getAllDatasets() external view returns (address[] memory) {
         return allDatasets;
     }

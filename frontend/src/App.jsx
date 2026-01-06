@@ -1,6 +1,8 @@
-import { useState } from "react";
-import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { BrowserRouter as Router, Routes, Route, Link, useLocation } from "react-router-dom";
 import { ethers } from "ethers";
+import { Globe, LayoutGrid, UploadCloud, User, Wallet, ArrowRight } from "lucide-react";
+
 import Home from "./pages/Home";
 import Publish from "./pages/Publish";
 import Profile from "./pages/Profile";
@@ -8,7 +10,30 @@ import Profile from "./pages/Profile";
 function App() {
   const [account, setAccount] = useState(null);
 
-  // --- WALLET CONNECTION LOGIC ---
+  // --- 1. INJECT GLOBAL GRID BACKGROUND ---
+  useEffect(() => {
+    const styleSheet = document.createElement("style");
+    styleSheet.innerText = `
+      .bg-grid {
+        background-size: 40px 40px;
+        background-image: linear-gradient(to right, #f0f0f0 1px, transparent 1px),
+                          linear-gradient(to bottom, #f0f0f0 1px, transparent 1px);
+      }
+      body { margin: 0; font-family: sans-serif; }
+    `;
+    document.head.appendChild(styleSheet);
+    
+    // Check if already connected
+    checkConnection();
+  }, []);
+
+  const checkConnection = async () => {
+    if (window.ethereum) {
+      const accounts = await window.ethereum.request({ method: "eth_accounts" });
+      if (accounts.length > 0) setAccount(accounts[0]);
+    }
+  };
+
   const connectWallet = async () => {
     if (window.ethereum) {
       try {
@@ -25,41 +50,74 @@ function App() {
 
   return (
     <Router>
-      <div className="min-h-screen bg-slate-900 text-white font-sans">
+      <div className="min-h-screen bg-white text-zinc-900 font-sans bg-grid selection:bg-zinc-900 selection:text-white flex flex-col">
         
-        {/* --- NAVIGATION BAR --- */}
-        <nav className="p-5 border-b border-slate-700 flex justify-between items-center bg-slate-800 shadow-lg">
-          <Link to="/" className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-pink-600">
-            NeuroMarket 🧠
-          </Link>
-          
-          <div className="flex items-center gap-6">
-            <Link to="/" className="hover:text-purple-400 transition font-medium">Marketplace</Link>
-            <Link to="/publish" className="hover:text-purple-400 transition font-medium">Publish</Link>
-            <Link to="/profile" className="hover:text-purple-400 transition font-medium">Dashboard</Link>
+        {/* --- GLOBAL NAVIGATION BAR --- */}
+        <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-zinc-200">
+          <div className="max-w-6xl mx-auto px-6 h-16 flex justify-between items-center">
             
-            {/* LOGIN BUTTON */}
-            {account ? (
-              <span className="bg-green-500/20 text-green-400 px-4 py-2 rounded-lg text-sm font-mono border border-green-500/50">
-                ● {account.slice(0, 6)}...{account.slice(-4)}
+            {/* LOGO */}
+            <Link to="/" className="flex items-center gap-2 group">
+              <div className="bg-zinc-900 text-white p-1.5 rounded transition group-hover:rotate-12">
+                <Globe size={20} />
+              </div>
+              <span className="font-bold text-lg tracking-tight">
+                NeuroMarket<span className="text-zinc-400">_OS</span>
               </span>
-            ) : (
-              <button 
-                onClick={connectWallet}
-                className="bg-purple-600 hover:bg-purple-700 px-5 py-2 rounded-lg font-bold transition shadow-lg shadow-purple-500/20"
-              >
-                Connect Wallet
-              </button>
-            )}
+            </Link>
+
+            {/* LINKS */}
+            <div className="hidden md:flex items-center gap-8 text-sm font-medium text-zinc-500">
+              <Link to="/" className="flex items-center gap-2 hover:text-zinc-900 transition">
+                <LayoutGrid size={16} /> Marketplace
+              </Link>
+              <Link to="/publish" className="flex items-center gap-2 hover:text-zinc-900 transition">
+                <UploadCloud size={16} /> Deploy Asset
+              </Link>
+              <Link to="/profile" className="flex items-center gap-2 hover:text-zinc-900 transition">
+                <User size={16} /> Workspace
+              </Link>
+            </div>
+
+            {/* WALLET BUTTON */}
+            <div>
+              {account ? (
+                <div className="flex items-center gap-3 bg-zinc-50 border border-zinc-200 px-4 py-2 rounded-full">
+                  <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+                  <span className="text-xs font-mono font-bold text-zinc-700">
+                    {account.slice(0, 6)}...{account.slice(-4)}
+                  </span>
+                </div>
+              ) : (
+                <button 
+                  onClick={connectWallet}
+                  className="bg-zinc-900 text-white px-5 py-2 rounded-full text-sm font-bold hover:bg-zinc-800 transition flex items-center gap-2 shadow-lg shadow-zinc-200"
+                >
+                  <Wallet size={16} /> Connect Wallet
+                </button>
+              )}
+            </div>
+
           </div>
         </nav>
 
-        {/* --- PAGE CONTENT --- */}
-        <Routes>
-          <Route path="/" element={<Home />} />
-          <Route path="/publish" element={<Publish />} />
-          <Route path="/profile" element={<Profile />} />
-        </Routes>
+        {/* --- MAIN CONTENT --- */}
+        <div className="flex-grow">
+          <Routes>
+            <Route path="/" element={<Home />} />
+            <Route path="/publish" element={<Publish />} />
+            <Route path="/profile" element={<Profile />} />
+          </Routes>
+        </div>
+
+        {/* --- SIMPLE FOOTER --- */}
+        <footer className="border-t border-zinc-100 py-8 mt-12">
+            <div className="max-w-6xl mx-auto px-6 text-center">
+                <p className="text-xs text-zinc-400 font-mono">
+                    NEUROMARKET DECENTRALIZED PROTOCOL • V2.0 • LOCALHOST
+                </p>
+            </div>
+        </footer>
 
       </div>
     </Router>

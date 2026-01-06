@@ -1,13 +1,12 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ethers } from "ethers";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
+import { UploadCloud, FileText, Check, Lock, ArrowRight, Server, Terminal, Tag } from "lucide-react";
 
-// ⚠️ YOUR CONTRACT ADDRESSES
+// ⚠️ YOUR CONSTANTS
 const MARKET_ADDRESS = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512"; 
 const TOKEN_ADDRESS = "0x5FbDB2315678afecb367f032d93F642f64180aa3"; 
-
-// ⚠️ YOUR PINATA JWT
 const PINATA_JWT = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySW5mb3JtYXRpb24iOnsiaWQiOiI1MDIyMjdjMC02MGZhLTRiNmMtOTg0MC04OGM5MWNkZGE3NDIiLCJlbWFpbCI6ImdhdXRhbWtkNTc2QGdtYWlsLmNvbSIsImVtYWlsX3ZlcmlmaWVkIjp0cnVlLCJwaW5fcG9saWN5Ijp7InJlZ2lvbnMiOlt7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6IkZSQTEifSx7ImRlc2lyZWRSZXBsaWNhdGlvbkNvdW50IjoxLCJpZCI6Ik5ZQzEifV0sInZlcnNpb24iOjF9LCJtZmFfZW5hYmxlZCI6ZmFsc2UsInN0YXR1cyI6IkFDVElWRSJ9LCJhdXRoZW50aWNhdGlvblR5cGUiOiJzY29wZWRLZXkiLCJzY29wZWRLZXlLZXkiOiJkYmE2ODk1ZDUyYWQyNjEzMmE3NCIsInNjb3BlZEtleVNlY3JldCI6IjRjNDMzMmJlODc0NWFkYWM2MGJiZTMwMTdjNjVkYmY4NGM2YjQ2YmY1ZjYxNGNjOGM1MDhkYWRmNTIwN2Q3ODkiLCJleHAiOjE3OTg3OTEyNzh9.RzHVbZF7QEnDQVWNvMRcU289FCHeEs0yDU7r8M-IkJk"; 
 
 const Publish = () => {
@@ -15,12 +14,23 @@ const Publish = () => {
   const [loading, setLoading] = useState(false);
   const [logs, setLogs] = useState([]);
   const [file, setFile] = useState(null);
-  
-  // Added 'mode' back to state (Default: 0)
   const [formData, setFormData] = useState({ name: "", price: "", description: "", mode: "0" });
 
+  // --- INJECT GRID ---
+  useEffect(() => {
+    const styleSheet = document.createElement("style");
+    styleSheet.innerText = `
+      .bg-grid {
+        background-size: 40px 40px;
+        background-image: linear-gradient(to right, #f0f0f0 1px, transparent 1px),
+                          linear-gradient(to bottom, #f0f0f0 1px, transparent 1px);
+      }
+    `;
+    document.head.appendChild(styleSheet);
+  }, []);
+
   const addLog = (msg) => setLogs(prev => [...prev, msg]);
-  
+
   const handleFileChange = (e) => {
     if (e.target.files) setFile(e.target.files[0]);
   };
@@ -44,56 +54,56 @@ const Publish = () => {
 
   const handlePublish = async (e) => {
     e.preventDefault();
-    if (!file) return alert("Please select a file first!");
+    if (!file || !formData.name || !formData.price) return alert("Fill all fields!");
     
     setLoading(true);
     setLogs([]);
+    addLog("Initializing Sequence...");
 
     try {
-      if (!window.ethereum) return alert("Please install MetaMask");
+      if (!window.ethereum) return alert("Install MetaMask");
       const provider = new ethers.BrowserProvider(window.ethereum);
       const signer = await provider.getSigner();
 
       // 1. Upload
-      addLog("📤 Uploading File to IPFS...");
+      addLog("> Uploading Blob to IPFS...");
       const ipfsCid = await uploadToPinata(file);
-      const realIpfsUrl = `ipfs://${ipfsCid}`;
-      addLog(`✅ Uploaded! CID: ${ipfsCid}`);
+      
+      // ⚡ COMBINE HASH + NAME
+      const realIpfsUrl = `ipfs://${ipfsCid}||${formData.name}`;
+      
+      addLog(`> Upload Success. CID: ${ipfsCid}`);
+      addLog(`> Metadata Linked: ${formData.name}`);
 
-      // 2. Connect
-      const marketAbi = [
+      const marketContract = new ethers.Contract(MARKET_ADDRESS, [
         "function publishDataset(string _ipfsHash, string _name, string _symbol, uint256 _price) external",
         "function STAKE_AMOUNT() public view returns (uint256)"
-      ];
-      const marketContract = new ethers.Contract(MARKET_ADDRESS, marketAbi, signer);
+      ], signer);
 
-      const tokenAbi = ["function approve(address spender, uint256 amount) public returns (bool)"];
-      const tokenContract = new ethers.Contract(TOKEN_ADDRESS, tokenAbi, signer);
+      const tokenContract = new ethers.Contract(TOKEN_ADDRESS, ["function approve(address spender, uint256 amount) public returns (bool)"], signer);
 
       // 3. Approve & Stake
-      addLog("💰 Checking Stake...");
+      addLog("> Verifying Stake Requirements...");
       const stakeAmount = await marketContract.STAKE_AMOUNT();
 
-      addLog("📝 Approving Token Spend...");
+      addLog("> Approving Token Allowance...");
       const approveTx = await tokenContract.approve(MARKET_ADDRESS, stakeAmount);
       await approveTx.wait();
 
       // 4. Publish
-      // (Note: We are not sending 'mode' to blockchain yet because your Contract V2 doesn't take it, 
-      // but having it in the UI makes the UX better for now!)
-      addLog("🚀 Publishing to Blockchain...");
+      addLog("> Executing Smart Contract...");
       const priceInWei = ethers.parseUnits(formData.price, 18);
       
       const tx = await marketContract.publishDataset(
-        realIpfsUrl, 
+        realIpfsUrl, // Sending the Combined String
         formData.name,
         "DATA", 
         priceInWei
       );
       
       await tx.wait();
-      alert("🎉 Dataset Published Successfully!");
-      navigate("/");
+      addLog("✅ SUCCESS: Asset Deployed on Mainnet.");
+      setTimeout(() => navigate("/"), 2000);
 
     } catch (error) {
       console.error(error);
@@ -104,38 +114,110 @@ const Publish = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 p-10 flex justify-center text-white">
-      <div className="w-full max-w-2xl bg-slate-800 p-8 rounded-xl shadow-xl">
-        <h1 className="text-3xl font-bold mb-6">📤 Publish Dataset</h1>
+    <div className="min-h-screen bg-white text-zinc-900 font-sans bg-grid flex items-center justify-center p-6">
+      
+      <div className="w-full max-w-lg bg-white border border-zinc-200 rounded shadow-xl shadow-zinc-200/50">
         
-        <div className="bg-black/40 p-3 rounded mb-4 font-mono text-xs h-32 overflow-auto border border-slate-600">
-           {logs.length === 0 ? "Ready..." : logs.map((l,i) => <div key={i}>{l}</div>)}
+        {/* HEADER */}
+        <div className="p-6 border-b border-zinc-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+                <div className="bg-zinc-900 text-white p-2 rounded">
+                    <Server size={18} />
+                </div>
+                <div>
+                    <h2 className="font-bold text-sm text-zinc-900">Deploy Asset</h2>
+                    <p className="text-xs text-zinc-500 font-mono">Mainnet Upload Protocol</p>
+                </div>
+            </div>
+            <Lock size={14} className="text-zinc-300" />
         </div>
 
-        <form onSubmit={handlePublish} className="space-y-4">
-          <div className="border-2 border-dashed border-slate-600 rounded-xl p-8 text-center hover:bg-slate-700 transition">
-            <input type="file" onChange={handleFileChange} className="hidden" id="file-upload"/>
-            <label htmlFor="file-upload" className="cursor-pointer block w-full h-full">
-               {file ? `📄 ${file.name}` : "Click here to Select a File"}
-            </label>
-          </div>
+        {/* LOG TERMINAL */}
+        {logs.length > 0 && (
+            <div className="bg-zinc-50 border-b border-zinc-100 p-4 h-32 overflow-auto font-mono text-[10px] text-zinc-600">
+                {logs.map((l,i) => <div key={i}>{l}</div>)}
+                {loading && <div className="animate-pulse">_</div>}
+            </div>
+        )}
 
-          <input name="name" placeholder="Dataset Name" onChange={handleChange} className="w-full p-3 rounded bg-slate-900 border border-slate-700" required />
-          <textarea name="description" placeholder="Description" onChange={handleChange} className="w-full p-3 rounded bg-slate-900 border border-slate-700" rows="3" />
-          
-          <div className="grid grid-cols-2 gap-4">
-            <input name="price" type="number" placeholder="Price (NRO)" onChange={handleChange} className="w-full p-3 rounded bg-slate-900 border border-slate-700" required />
+        {/* FORM */}
+        <form onSubmit={handlePublish} className="p-6 space-y-5">
             
-            {/* --- RESTORED MODE SELECTOR --- */}
-            <select name="mode" onChange={handleChange} className="w-full p-3 rounded bg-slate-900 border border-slate-700">
-              <option value="0">📥 Standard Download</option>
-              <option value="1">🔒 Privacy Compute (Coming Soon)</option>
-            </select>
-          </div>
+            {/* NAME INPUT */}
+            <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Dataset Name</label>
+                <div className="relative">
+                    <input 
+                        name="name"
+                        onChange={handleChange}
+                        placeholder="e.g. Traffic Analysis 2026"
+                        className="w-full border border-zinc-200 rounded p-2.5 pl-9 text-sm font-medium focus:outline-none focus:border-zinc-900 transition"
+                    />
+                    <Tag className="absolute left-2.5 top-2.5 text-zinc-300" size={16} />
+                </div>
+            </div>
 
-          <button type="submit" disabled={loading} className="w-full bg-purple-600 p-4 rounded font-bold hover:bg-purple-500">
-            {loading ? "Publishing..." : "Stake Fee & Publish 🚀"}
-          </button>
+            {/* DESCRIPTION */}
+            <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Description</label>
+                <textarea 
+                    name="description" 
+                    onChange={handleChange} 
+                    className="w-full border border-zinc-200 rounded p-2.5 text-sm focus:outline-none focus:border-zinc-900 transition" 
+                    rows="2"
+                    placeholder="Brief description of contents..."
+                />
+            </div>
+
+            {/* FILE UPLOAD */}
+            <div className="space-y-1">
+                <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Source Payload</label>
+                <div className="relative border-2 border-dashed border-zinc-200 rounded-lg p-6 hover:border-zinc-400 hover:bg-zinc-50 transition text-center cursor-pointer group">
+                    <input type="file" onChange={handleFileChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                    {file ? (
+                        <div className="flex flex-col items-center gap-1 text-emerald-600">
+                            <Check size={20} />
+                            <span className="font-mono text-xs font-bold">{file.name}</span>
+                        </div>
+                    ) : (
+                        <div className="flex flex-col items-center gap-1 text-zinc-400 group-hover:text-zinc-600">
+                            <UploadCloud size={20} />
+                            <span className="text-xs font-bold">Select File</span>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* PRICE & MODE */}
+            <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Price (NRO)</label>
+                    <input 
+                        name="price" 
+                        type="number" 
+                        onChange={handleChange}
+                        placeholder="0.00"
+                        className="w-full border border-zinc-200 rounded p-2.5 text-sm font-mono focus:outline-none focus:border-zinc-900 transition"
+                    />
+                </div>
+                <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Access Mode</label>
+                    <select name="mode" onChange={handleChange} className="w-full border border-zinc-200 rounded p-2.5 text-sm bg-white focus:outline-none focus:border-zinc-900">
+                        <option value="0">Standard DL</option>
+                        <option value="1">Privacy Compute</option>
+                    </select>
+                </div>
+            </div>
+
+            {/* SUBMIT */}
+            <button 
+                type="submit" 
+                disabled={loading}
+                className="w-full bg-zinc-900 hover:bg-zinc-800 text-white font-bold py-3 rounded text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 mt-4"
+            >
+                {loading ? "Processing..." : "Stake & Deploy"}
+                {!loading && <ArrowRight size={14} />}
+            </button>
         </form>
       </div>
     </div>

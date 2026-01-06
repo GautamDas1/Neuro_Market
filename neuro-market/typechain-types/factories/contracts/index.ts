@@ -3,5 +3,4 @@
 /* eslint-disable */
 export { DataToken__factory } from "./DataToken__factory";
 export { NeuroMarketV2__factory } from "./NeuroMarketV2__factory";
-export { NeuroMarketplace__factory } from "./NeuroMarketplace__factory";
 export { NeuroToken__factory } from "./NeuroToken__factory";

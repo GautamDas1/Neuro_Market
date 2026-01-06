@@ -33,10 +33,14 @@ export interface NeuroMarketV2Interface extends Interface {
       | "listings"
       | "neuroToken"
       | "publishDataset"
+      | "toggleStatus"
   ): FunctionFragment;
 
   getEvent(
-    nameOrSignatureOrTopic: "DatasetPublished" | "FilePurchased"
+    nameOrSignatureOrTopic:
+      | "DatasetPublished"
+      | "FilePurchased"
+      | "StatusChanged"
   ): EventFragment;
 
   encodeFunctionData(
@@ -67,6 +71,10 @@ export interface NeuroMarketV2Interface extends Interface {
     functionFragment: "publishDataset",
     values: [string, string, string, BigNumberish]
   ): string;
+  encodeFunctionData(
+    functionFragment: "toggleStatus",
+    values: [AddressLike]
+  ): string;
 
   decodeFunctionResult(
     functionFragment: "STAKE_AMOUNT",
@@ -85,6 +93,10 @@ export interface NeuroMarketV2Interface extends Interface {
   decodeFunctionResult(functionFragment: "neuroToken", data: BytesLike): Result;
   decodeFunctionResult(
     functionFragment: "publishDataset",
+    data: BytesLike
+  ): Result;
+  decodeFunctionResult(
+    functionFragment: "toggleStatus",
     data: BytesLike
   ): Result;
 }
@@ -117,6 +129,19 @@ export namespace FilePurchasedEvent {
   export interface OutputObject {
     buyer: string;
     dataTokenURI: string;
+  }
+  export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
+  export type Filter = TypedDeferredTopicFilter<Event>;
+  export type Log = TypedEventLog<Event>;
+  export type LogDescription = TypedLogDescription<Event>;
+}
+
+export namespace StatusChangedEvent {
+  export type InputTuple = [dataToken: AddressLike, newStatus: boolean];
+  export type OutputTuple = [dataToken: string, newStatus: boolean];
+  export interface OutputObject {
+    dataToken: string;
+    newStatus: boolean;
   }
   export type Event = TypedContractEvent<InputTuple, OutputTuple, OutputObject>;
   export type Filter = TypedDeferredTopicFilter<Event>;
@@ -202,6 +227,12 @@ export interface NeuroMarketV2 extends BaseContract {
     "nonpayable"
   >;
 
+  toggleStatus: TypedContractMethod<
+    [_dataTokenAddress: AddressLike],
+    [void],
+    "nonpayable"
+  >;
+
   getFunction<T extends ContractMethod = ContractMethod>(
     key: string | FunctionFragment
   ): T;
@@ -248,6 +279,13 @@ export interface NeuroMarketV2 extends BaseContract {
     [void],
     "nonpayable"
   >;
+  getFunction(
+    nameOrSignature: "toggleStatus"
+  ): TypedContractMethod<
+    [_dataTokenAddress: AddressLike],
+    [void],
+    "nonpayable"
+  >;
 
   getEvent(
     key: "DatasetPublished"
@@ -262,6 +300,13 @@ export interface NeuroMarketV2 extends BaseContract {
     FilePurchasedEvent.InputTuple,
     FilePurchasedEvent.OutputTuple,
     FilePurchasedEvent.OutputObject
+  >;
+  getEvent(
+    key: "StatusChanged"
+  ): TypedContractEvent<
+    StatusChangedEvent.InputTuple,
+    StatusChangedEvent.OutputTuple,
+    StatusChangedEvent.OutputObject
   >;
 
   filters: {
@@ -285,6 +330,17 @@ export interface NeuroMarketV2 extends BaseContract {
       FilePurchasedEvent.InputTuple,
       FilePurchasedEvent.OutputTuple,
       FilePurchasedEvent.OutputObject
+    >;
+
+    "StatusChanged(address,bool)": TypedContractEvent<
+      StatusChangedEvent.InputTuple,
+      StatusChangedEvent.OutputTuple,
+      StatusChangedEvent.OutputObject
+    >;
+    StatusChanged: TypedContractEvent<
+      StatusChangedEvent.InputTuple,
+      StatusChangedEvent.OutputTuple,
+      StatusChangedEvent.OutputObject
     >;
   };
 }

@@ -63,7 +63,10 @@ def train_text_model(content):
         words = re.findall(r'\w+', text.lower())
         return f"✅ NLP Model Trained! Word Count: {len(words)}"
     except Exception as e: return f"Text Logic Error: {str(e)}"
-
+# --- NEW: HEALTH CHECK ROUTE ---
+@app.route('/health', methods=['GET'])
+def health_check():
+    return jsonify({"status": "online", "system": "active"})
 # --- MAIN ROUTE ---
 @app.route('/compute', methods=['POST'])
 def run_compute():
